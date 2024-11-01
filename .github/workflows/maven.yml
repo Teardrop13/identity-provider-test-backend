@@ -1,0 +1,39 @@
+name: Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build with Maven
+      run: mvn -B package --file pom.xml
+
+    - name: Deploy
+      shell: bash
+      env:
+        SSH_PRIVATE_KEY: ${{secrets.SSH_PRIVATE_KEY}}
+        SERVER_URL: ${{secrets.SERVER_URL}}
+        SERVER_USER: ${{secrets.SERVER_USER}}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan -H "$SERVER_URL" >> ~/.ssh/known_hosts
+        scp -i ~/.ssh/id_ed25519 target/idp-backend-0.0.1-SNAPSHOT.jar "${SERVER_USER}@${SERVER_URL}:/home/${SERVER_USER}/applications/idp-backend-0.0.1-SNAPSHOT.jar"
+        ssh "${SERVER_USER}@${SERVER_URL}" "sudo mv /home/${SERVER_USER}/applications/idp-backend-0.0.1-SNAPSHOT.jar /opt/auth0/; sudo systemctl restart idp-backend.service"
